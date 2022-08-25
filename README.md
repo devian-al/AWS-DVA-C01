@@ -1,6 +1,6 @@
 # Amazon Cognito
-## Intro
-We want to give our users an identity so that they can interact with our application.
+## Overview
+To give our users an identity so that they can interact with our application.
 - Cognito User Pools (CUP)
   - Sign in functionality for app users
   - Integrate with API Gateway & Application Load Balancer
@@ -33,9 +33,9 @@ We want to give our users an identity so that they can interact with our applica
 | | Pre Token Generation Lambda Trigger | Augment or suppress token claims |
 | Sign-Up | Pre Sign-ip Lambda Trigger | Custom Validation to accept or deny the sign-up request |
 | | Post Conformation Lambda Trigger | Custom welcome messages or event logging for custom analytics |
-| | Migrate USer Lambda TRigger | Migrate a user from an existing user directory to user pools |
+| | Migrate User Lambda Trigger | Migrate a user from an existing user directory to user pools |
 | Messages | Custom message lambda trigger | Advanced customisation and localization of messages |
-| Token Creation | Pre Token Generation Lambda TRigger | Add or Remove attribtutes in ID tokens |
+| Token Creation | Pre Token Generation Lambda Trigger | Add or Remove attribtutes in ID tokens |
 
 
 ## Cognito User Pools – Hosted Authentication UI
@@ -105,7 +105,6 @@ We want to give our users an identity so that they can interact with our applica
 Transform Header indicates it’s SAM template:
 - Transform: 'AWS::Serverless-2016-10-31'
 - Write Code
-  
     `AWS::Serverless::Function`
 
     `AWS::Serverless::Api`
