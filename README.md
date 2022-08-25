@@ -55,10 +55,9 @@ We want to give our users an identity so that they can interact with our applica
   - The IAM policies applied to the credentials are defined in Cognito
   - They can be customized based on the user_id for fine grained control
 
-![Cog-Identity-with-CUP](https://user-images.githubusercontent.com/33105405/186547671-85f31c95-9e65-4ac0-898d-2e8272ebf451.png)
+![Cog-Identity-Pool](https://user-images.githubusercontent.com/33105405/186548097-17b7d5fe-0164-431b-b9a4-e32aafc5113e.png)
 
-![Cog-Identity-Pool](https://user-images.githubusercontent.com/33105405/186547683-58662dd6-b341-417c-8055-9ddf43362f71.png)
-
+![Cog-Identity-with-CUP](https://user-images.githubusercontent.com/33105405/186548108-5143ac9b-34f6-49ee-9154-6179917e10da.png)
 
 ## Cognito Identity Pools – IAM Roles
 - Default IAM roles for authenticated and guest users
