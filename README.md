@@ -163,3 +163,181 @@ Managed repository for serverless applications
 - This prevents duplicate work, and just go straight to publishing
 - Application settings and behaviour can be customized using Environment variables
 
+# AWS Cloud Development Kit (CDK)
+- Define your cloud infrastructure using a familiar language:
+- JavaScript/TypeScript,Python,Java,and.NET
+- Contains high level components called `constructs`
+- The code is `compiled` into a CloudFormation template (JSON/YAML)
+- You can therefore deploy infrastructure and application runtime code together
+- Great for Lambda functions and Docker containers in ECS / EKS
+
+## CDK VS SAM
+
+| SAM | CDK |
+|--- |--- |
+| Serveless focused | All AWS services |
+| Write declaratively in JSON or YAML | Write in programming language such as JavaScript/TypeScript, Pyton, etc
+| Great for quickly getting started with Lambda | - |
+|Leverages CloudFormation | Leverages Cloudformation |
+
+# AWS Step Functions
+- AWS Step Functions is a web service that provides `serverless orchestration` for modern applications. It enables you to coordinate the components of distributed applications and microservices using visual workflows.
+- Step Functions is based on the `concepts of tasks and state machines`.
+  - A task performs work by using an activity or an AWS Lambda function, or by passing parameters to the API actions of other services.
+  - A finite state machine can express an algorithm as a number of states, their relationships, and their input and output.
+- You define state machines using the JSON-based Amazon States Language.
+- A state is referred to by its name, which can be any string, but which must be unique within the scope of the entire state machine. An instance of a state exists until the end of its execution.
+  - There are 8 types of states:
+    - `Task state` – Do some work in your state machine. AWS Step Functions can invoke Lambda functions directly from a task state.
+    - `Choice state` – Make a choice between branches of execution
+    - `Fail state` – Stops execution and marks it as failure
+    - `Succeed state` – Stops execution and marks it as a success
+    - `Pass state` – Simply pass its input to its output or inject some fixed data
+    - `Wait state` – Provide a delay for a certain amount of time or until a specified time/date
+    - `Parallel state` – Begin parallel branches of execution
+    - `Map state` – Adds a for-each loop condition
+  - **Common features between states**
+    - Each state must have a Type field indicating what type of state it is.
+    - Each state can have an optional Comment field to hold a human-readable comment about, or description of, the state.
+    - Each state (except a Succeed or Fail state) requires a Next field or, alternatively, can become a terminal state by specifying an End field.
+- `Activities enable you to place a task in your state machine where the work is performed by an activity worker that can be hosted on Amazon EC2, Amazon ECS, or mobile devices.`
+- Activity tasks let you assign a specific step in your workflow to code running in an activity worker. Service tasks let you connect a step in your workflow to a supported AWS service.
+- With Transitions, after executing a state, AWS Step Functions uses the value of the Next field to determine the next state to advance to. States can have multiple incoming transitions from other states.
+- **State machine data is represented by JSON text**. 
+- It takes the following forms:
+  - The initial input into a state machine
+  - Data passed between states
+  - The output from a state machine
+- Individual states receive JSON as input and usually pass JSON as output to the next state.
+- **Common Use Cases**
+  - Step Functions can help ensure that `long-running, multiple ETL jobs execute in order and complete successfully`, instead of manually orchestrating those jobs or maintaining a separate application.
+  - By using Step Functions to handle a few tasks in your codebase, you can approach the transformation of monolithic applications into microservices as a series of small steps.
+  - You can use Step Functions to easily `automate recurring tasks such as patch management, infrastructure selection, and data synchronization, and Step Functions will automatically scale, respond to timeouts, and retry failed tasks.`
+  - Use Step Functions to `combine multiple AWS Lambda functions into responsive serverless applications` and microservices, without having to write code for workflow logic, parallel processes, error handling, timeouts or retries.
+  - You can also orchestrate data and services that run on Amazon EC2 instances, containers, or on-premises servers.
+
+## Error Handling in Step Functions
+- Any state can encounter runtime errors for various reasons:
+  - State machine definition issues (for example, no matching rule in a Choice state)  
+  - Task failures (for example, an exception in a Lambda function)
+  - Transient issues (for example, network partition events)
+- Use Retry (to retry failed state) and Catch (transition to failure path) in the State Machine to handle the errors instead of inside the Application Code
+- Predefined error codes:
+  - `States.ALL` : matches any error name
+  - `States.Timeout`:Task ran longer thanTimeoutSeconds or no heartbeat received - States.TaskFailed: execution failure
+  - `States.Permissions`: insufficient privileges to execute code
+- The state may report is own errors
+
+## Step Functions – Retry (Task or Parallel State)
+- Evaluated from top to bottom
+- `ErrorEquals`: match a specific kind of error
+- `IntervalSeconds`: initial delay before retrying
+- `BackoffRate`: multiple the delay after each retry
+- `MaxAttempts`: default to 3, set to 0 for never retried
+- When max attempts are reached, the Catch kicks in
+
+```json
+"Retry": [ 
+{
+      "ErrorEquals": [ "ErrorA", "ErrorB" ],
+      "IntervalSeconds": 1,
+      "BackoffRate": 2.0,
+      "MaxAttempts": 2
+}
+{
+   "ErrorEquals": [ "States.Timeout" ],
+   "IntervalSeconds": 3,
+   "MaxAttempts": 2,
+   "BackoffRate": 1.5
+} 
+{
+   "ErrorEquals": [ "States.All" ],
+   "IntervalSeconds": 5,
+   "MaxAttempts": 5,
+   "BackoffRate": 2.0
+} 
+
+]
+```
+## Step Functions – Catch (Task or Parallel State)
+Evaluated from top to bottom
+- `ErrorEquals`: match a specific kind of error
+- `Next`: State to send to
+- `ResultPath` - A path that determines what input is sent to the state specified in the Next field.
+  
+```json
+"Catch": [ 
+{
+   "ErrorEquals": [ "java.lang.Exception" ],
+   "ResultPath": "$.error-info",
+   "Next": "RecoveryState"
+}, 
+{
+   "ErrorEquals": [ "States.ALL" ],
+   "Next": "EndState"
+} 
+]
+```
+## Step Function - Standard vs Express
+
+|  	| Standard Workflows 	| Express Workflows 	|
+|---	|---	|---	|
+| Maximum duration 	| 1 year. 	| 5 minutes. 	|
+| Supported execution start rate 	| Over 2,000 per second 	| Over 100,000 per second 	|
+| Supported state transition rate 	| Over 4,000 per second per account 	| Nearly Unlimited 	|
+| Pricing 	| Priced per state transition. A state transition is counted each time a step in your execution is completed (more expensive) 	| Priced by the number of executions you run, their duration, and memory consumption (cheaper) 	|
+| Execution history 	| Executions can be listed and described with Step Functions APIs, and visually debugged through<br>the console. They can also be inspected in CloudWatch Logs by enabling logging on your state machine. 	| Executions can be inspected in CloudWatch Logs by enabling logging on your state machine. 	|
+| Execution semantics 	| Exactly-once workflow execution. 	| At-least-once workflow execution. 	|
+
+# App Sync
+- AppSync is a managed service that uses GraphQL
+- GraphQL makes it easy for applications to get exactly the data they need.
+- This includes combining data from one or more sources 
+  - NoSQL data stores, Relational databases, HTTP APIs...
+  - Integrates with DynamoDB, Aurora, Elasticsearch & others  
+  - Custom sources with AWS Lambda
+- Retrieve data in real-time with WebSocket or MQTT on WebSocket 
+- For mobile apps: local data access & data synchronization
+- It all starts with uploading one GraphQL schema
+
+![GraphQL-AppSync](https://user-images.githubusercontent.com/33105405/186572140-0b566582-e879-4a99-813c-cbd7496fd377.png)
+
+## AppSync – Security
+- There are four ways you can authorize applications to interact with your AWS AppSync GraphQL API:
+- API_KEY
+- AWS_IAM: IAM users / roles / cross-account access
+- OPENID_CONNECT: OpenID Connect provider / JSON Web Token
+- AMAZON_COGNITO_USER_POOLS
+- For custom domain & HTTPS, use CloudFront in front of AppSync
+
+# AWS Amplify
+- Set of tools to get started with creating mobile and web applications
+- “Elastic Beanstalk for mobile and web applications”
+- Must-have features such as data storage, authentication, storage, and machine-learning, all powered by AWS services
+- Front-end libraries with ready-to-use components for React.js,Vue, Javascript, iOS, Android, Flutter, etc...
+- Incorporates AWS best practices to for reliability, security, scalability
+- Build and deploy with the Amplify CLI or Amplify Studio
+
+## AWS Amplify – Important Features
+### Authentication
+  - `amplify add auth`
+  - Leverages Amazon Cognito
+  - User registration, authentication, account recovery & other operations
+  - Support MFA, Social Sign-in, etc...
+  - Pre-built UI components
+  - Fine-grained authorization
+### Datastore
+  - `amplify add api`
+  - Leverages Amazon AppSync and Amazon DynamoDB
+  - Work with local data and have automatic synchronization to the cloud without complex code
+  - Powered by GraphQL
+  - Offline and real-time capabilities
+  - Visual data modeling w/ Amplify Studio
+### AWS Amplify Hosting
+  - `amplify add hosting`
+  - Build and Host Modern Web Apps 
+  - CICD (build, test, deploy)
+  - Pull Request Previews
+  - Custom Domains
+  - Monitoring
+  - Redirect and Custom Headers - Password protection
