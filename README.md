@@ -88,3 +88,78 @@ We want to give our users an identity so that they can interact with our applica
 - **Push Sync:** silently notify across all devices when identity data changes 
 - **Cognito Stream:** stream data from Cognito into Kinesis
 - **Cognito Events:** execute Lambda functions in response to events
+
+
+# Serverless Application Model
+## Intro
+- Framework for developing and deploying serverless applications
+- All the configuration is YAML code
+- Generate complex CloudFormation from simple SAMYAML file
+- Supports anything from CloudFormation: Outputs, Mappings, Parameters, Resources...
+- Only two commands to deploy to AWS
+- SAM can use CodeDeploy to deploy Lambda functions
+- SAM can help you to run Lambda, API Gateway, DynamoDB locally
+
+### SAM Recipe
+
+Transform Header indicates it’s SAM template:
+- Transform: 'AWS::Serverless-2016-10-31'
+- Write Code
+  
+    `AWS::Serverless::Function`
+
+    `AWS::Serverless::Api`
+
+    `AWS::Serverless::SimpleTable`
+- Package & Deploy:
+  - aws cloudformation package / sam package
+  - aws cloudformation deploy / sam deploy
+
+![SAM-Deployment](https://user-images.githubusercontent.com/33105405/186555178-db5ab9ca-14ed-4629-bb2a-630555660b0e.png)
+
+###  SAM - Cli Debugging
+SAM – CLI Debugging
+- Locally build, test, and debug your serverless applications that are defined using AWS SAM templates
+- Provides a lambda-like execution environment locally
+- SAM CLI + AWS Toolkits => step-through and debug your code
+- Supported IDEs:AWS Cloud9,Visual Studio Code, JetBrains, PyCharm, IntelliJ, ...
+- AWS Toolkits: IDE plugins which allows you to build, test, debug, deploy, and invoke Lambda functions built using AWS SAM
+
+### SAM - Policy Templates
+
+- List of templates to apply permissions to your Lambda Functions
+- Full list available here: https://docs.aws.amazon.com/serverless- application- model/latest/developerguide/serverless- policy-templates.html#serverless-policy- template-table
+- Important examples:
+  - `S3ReadPolicy`: Gives read only permissions to objects in S3
+  - `SQSPollerPolicy`: Allows to poll an SQS queue 
+  - `DynamoDBCrudPolicy`: CRUD = create read update delete
+
+### SAM and Code Deploy
+
+- SAM framework natively uses CodeDeploy to update Lambda functions
+- Traffic Shifting feature
+- Pre and Post traffic hooks features to validate deployment (before the traffic shift starts and after it ends)
+- Easy & automated rollback using CloudWatch Alarms
+
+![SAM-CodeDeploy](https://user-images.githubusercontent.com/33105405/186555109-af923e49-40e5-4590-b49e-ec04efc37639.png)
+
+## SAM Summary
+
+SAM is built on CloudFormation
+- SAM requires the Transform and Resources sections
+- Commands to know:
+  - sam build: fetch dependencies and create local deployment artifacts
+  - sam package: package and upload to Amazon S3, generate CF template 
+  - sam deploy: deploy to CloudFormation
+- SAM Policy templates for easy IAM policy definition
+- SAM is integrated with CodeDeploy to do deploy to Lambda aliases
+
+# Serverless Application RRepository (SAR)
+Managed repository for serverless applications
+- The applications are packaged using SAM
+- Build and publish applications that can be re-used by organizations
+  - Can share publicly
+  - Can share with specific AWS accounts
+- This prevents duplicate work, and just go straight to publishing
+- Application settings and behaviour can be customized using Environment variables
+
