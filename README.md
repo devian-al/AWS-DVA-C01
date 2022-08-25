@@ -141,7 +141,7 @@ SAM – CLI Debugging
 - Pre and Post traffic hooks features to validate deployment (before the traffic shift starts and after it ends)
 - Easy & automated rollback using CloudWatch Alarms
 
-![SAM-CodeDeploy](https://user-images.githubusercontent.com/33105405/186555109-af923e49-40e5-4590-b49e-ec04efc37639.png)
+![SAM-CodeDeploy](https://user-images.githubusercontent.com/33105405/186556692-515b5670-f0c0-45a2-b4e2-9d0a88d4b099.png)
 
 ## SAM Summary
 
