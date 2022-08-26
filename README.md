@@ -1,3 +1,610 @@
+# DynamoDB
+## Traditional Architecture 
+-  Traditional applications leverage RDBMS databases
+-  These databases have the SQL query language
+-  Strong requirements about how the data should be modeled
+-  Ability to do query joins, aggregations, complex computations
+-  Vertical scaling (getting a more powerful CPU / RAM / IO)
+-  Horizontal scaling (increasing reading capability by adding EC2 / RDS Read Replicas) 
+## NoSQL databases 
+- NoSQL databases are non-relational databases and are distributed 
+- NoSQL databases include MongoDB, DynamoDB, ... 
+- NoSQL databases do not support query joins (or just limited support) 
+- All the data that is needed for a query is present in one row 
+- NoSQL databases don’t perform aggregations such as “SUM”, “AVG”, ... 
+- NoSQL databases scale horizontally 
+- There’s no “right or wrong” for NoSQL vs SQL, they just require to model the data differently and think about user queries differently 
+## Amazon DynamoDB 
+-  Fully managed, highly available with replication across multiple AZs
+-  NoSQL database - not a relational database
+-  Scales to massive workloads, distributed database
+-  Millions of requests per seconds, trillions of row, 100s of TB of storage -  Fast and consistent in performance (low latency on retrieval) 
+- Integrated with IAM for security, authorization and administration -  Enables event driven programming with DynamoDB Streams
+-  Low cost and auto-scaling capabilities
+-  Standard & Infrequent Access (IA) Table Class 
+## DynamoDB - Basics 
+-  DynamoDB is made of Tables
+-  Each table has a Primary Key (must be decided at creation time) -  Each table can have an infinite number of items (= rows)
+-  Each item has attributes (can be added over time – can be null) -  Maximum size of an item is 400KB 
+-  Data types supported are:
+   -  `Scalar Types` – String, Number, Binary, Boolean, Null -  Document Types – List, Map
+   -  `Set Types` – String Set, Number Set, Binary Set 
+## DynamoDB – Primary Keys 
+-  **Option 1**: Partition Key (HASH)
+   -  Partition key must be unique for each item 
+   -  Partition key must be “diverse” so that the data is distributed -  Example:“User_ID” for a users table 
+
+-  **Option 2**: Partition Key + Sort Key (HASH + RANGE)
+   -  The combination must be unique for each item
+   -  Data is grouped by partition key
+   -  Example: users-games table, “User_ID” for Partition Key and “Game_ID” for Sort Key 
+
+## DynamoDB – Partition Keys (Exercise) 
+-	We’re building a movie database 
+-	What is the best Partition Key to maximize data distribution? -  movie_id 
+-  producer_name
+-  leader_actor_name -  movie_language 
+-	“movie_id” has the highest cardinality so it’s a good candidate 
+-	“movie_language” doesn’t take many values and may be skewed towards English so it’s not a great choice for the Partition Key 
+## DynamoDB – Read/Write Capacity Modes 
+-  Control how you manage your table’s capacity (read/write throughput) 
+-  **Provisioned Mode (default)**
+   -  You specify the number of reads/writes per second 
+   -  You need to plan capacity beforehand
+   -  Pay for provisioned read & write capacity units 
+-  **On-Demand Mode**
+   -  Read/writes automatically scale up/down with your workloads 
+   -  No capacity planning needed
+   -  Pay for what you use, more expensive ($$$) 
+-  You can switch between different modes once every 24 hours
+## R/W Capacity Modes – Provisioned 
+-	Table must have provisioned read and write capacity units 
+-	`Read Capacity Units (RCU)` – throughput for reads 
+-	`Write Capacity Units (WCU)` – throughput for writes 
+-	Option to setup `auto-scaling` of throughput to meet demand 
+-	Throughput can be exceeded temporarily using “Burst Capacity” 
+-	If Burst Capacity has been consumed, you’ll get a `ProvisionedThroughputExceededException`
+-	It’s then advised to do an `exponential backoff` retry
+
+## DynamoDB – Write Capacity Units (WCU)
+- One Write Capacity Unit (WCU) represents one write per second for an item up to 1 KB in size
+- If the items are larger than 1 KB, more WCUs are consumed
+
+| Scenario | Result
+|--- |--- |
+| we write 10 items per second, with item size 2 KB | We need <br> $10 * ({2 KB \over 1 KB}) = 20 WCUs$|
+| we write 6 items per second, with item size 4.5 KB | We need <br> $6 * ({5 KB \over 1 KB}) = 20 WCUs$|
+| we write 120 items per second, with item size 2 KB | We need <br> $({120 \over 60}) * ({2 KB \over 1 KB}) = 4 WCUs$|
+## Strongly Consistent Read vs. Eventually Consistent Read
+- Eventually Consistent Read (default)
+- If we read just after a write, it’s possible we’ll get some stale data because of replication
+- Strongly Consistent Read
+- If we read just after a write, we will get the correct data
+- Set `ConsistentRead` parameter to `True` in API calls (GetItem, BatchGetItem, Query, Scan)
+- Consumes twice the RCU
+
+DynamoDB – Read Capacity Units (RCU)
+- One Read Capacity Unit (RCU) represents one Strongly Consistent Read per second, or two Eventually Consistent Reads per second, for an item up to 4 KB in size
+- If the items are larger than 4 KB, more RCUs are consumed
+
+| Scenario | Result
+|--- |--- |
+| 10 Strongly Consistent Reads per second, with item size 4 KB | We need <br>$10 * ({4 KB \over 4 KB}) = 10 RCUs$|
+| 16 Eventually Consistent Reads per second, with item size 12 KB | We need <br> $({16 \over 2}) * ({12 KB \over 4 KB}) = 24 RCUs$|
+| 10 Strongly Consistent Reads per second, with item size 6 KB | We need <br> $10 * ({8 KB \over 4 KB}) = 20 RCUs$ <br> round up 6KB to 8 KB|
+
+## DynamoDB – Partitions Internal
+- Data is stored in partitions
+- Partition Keys go through a hashing algorithm to know to which partition they go to
+To Compute the number of partions:
+- No. of partitians <sub>by capacity</sub> = $({RCU_Total \over 3000}) + ({WCU_Total \over 1000})$
+
+- No. of partitians <sub>by size</sub> = ${Total Size \over 10GB}$
+
+- No. of partitions = ceil(max(# of particians<sub>bycapacity</sub>, # of partitions<sub>bysize</sub>))
+- WCUs and RCUs are spread evenly across partitions
+
+## DynamoDB – Throttling
+- If we exceed provisioned RCUs or WCUs, we get `ProvisionedThroughputExceededException`
+- Reasons:
+    - `Hot Keys` – one partition key is being read too many times (e.g., popular item)
+    - `Hot Partitions`
+    - `Very large items`, remember RCU and WCU depends on size of items
+- Solutions:
+    - `Exponential backoff` when exception is encountered (already in SDK)
+    - `Distribute partition` keys as much as possible
+    - If RCU issue, we can use `DynamoDB Accelerator (DAX)`
+
+## R/W Capacity Modes – On-Demand
+- Read/writes automatically scale up/down with your workloads
+- No capacity planning needed (WCU / RCU)
+- Unlimited WCU & RCU, no throttle, more expensive
+- You’re charged for reads/writes that you use in terms of RRU and WRU 
+- `Read Request Units` (RRU) – throughput for reads (same as RCU)
+- `Write Request Units` (WRU) – throughput for writes (same as WCU) 
+- 2.5x more expensive than provisioned capacity (use with care)
+- `Use cases`: unknown workloads, unpredictable application traffic, ...
+
+## DynamoDB – Writing Data
+**PutItem**
+    - Creates a new item or fully replace an old item (same Primary Key) 
+    - ConsumesWCUs 
+**UpdateItem**
+    - Edits an existing item’s attributes or adds a new item if it doesn’t exist
+    - Can be used to implement Atomic Counters – a numeric attribute that’s unconditionally incremented
+**Conditional Writes**
+    - Accept a write/update/delete only if conditions are met, otherwise returns an error - Helps with concurrent access to items
+    - No performance impact
+## DynamoDB – Reading Data
+- GetItem
+- Read based on Primary key
+- Primary Key can be HASH or HASH+RANGE
+- Eventually Consistent Read (default)
+- Option to use Strongly Consistent Reads (more RCU - might take longer)
+- ProjectionExpression can be specified to retrieve only certain attributes
+
+ 
+ ## DynamoDB – Reading Data (Query)
+- Query returns items based on:
+- KeyConditionExpression
+    - Partition Key value (must be = operator) – required
+    - SortKeyvalue(=,<,<=,>,>=,Between,Beginswith)–optional
+- FilterExpression
+    - Additional filtering after the Query operation (before data returned to you)
+    - Use only with non-key attributes (does not allow HASH or RANGE attributes)
+- Returns:
+    - The number of items specified in Limit 
+    - Or upto1MBofdata
+- Ability to do pagination on the results
+- Can query table, a Local Secondary Index, or a Global Secondary Index
+
+ ## DynamoDB – Reading Data (Scan)
+- Scan the entire table and then filter out data (inefficient)
+- Returns up to 1 MB of data – use pagination to keep on reading
+- Consumes a lot of RCU
+- Limit impact using Limit or reduce the size of the result and pause
+- For faster performance, use Parallel Scan
+- Multiple workers scan multiple data segments at the same time
+- Increases the throughput and RCU consumed
+- Limit the impact of parallel scans just like you would for Scans
+- Can use ProjectionExpression & FilterExpression (no changes to RCU) © Stephane Maarek
+
+  
+ ## DynamoDB – Deleting Data
+- DeleteItem
+    - Delete an individual item
+    - Ability to perform a conditional delete
+- DeleteTable
+    - Delete a whole table and all its items
+    - Much quicker deletion than calling DeleteItem on all items
+
+## DynamoDB – Batch Operations
+- Allows you to save in latency by reducing the number of API calls
+- Operations are done in parallel for better efficiency
+- Part of a batch can fail; in which case we need to try again for the failed items
+- BatchWriteItem
+    - Up to 25 PutItem and/or DeleteItem in one call
+    - Up to 16 MB of data written,up to 400 KB of data per item 
+    - Can’t update items (use UpdateItem)
+- BatchGetItem
+    - Return items from one or more tables
+    - Up to 100 items,up to 16 MB of data
+    - Items are retrieved in parallel to minimize latency
+
+
+## DynamoDB – Local Secondary Index (LSI)
+- Alternative Sort Key for your table (same Partition Key as that of base table)
+- The Sort Key consists of one scalar attribute (String, Number, or Binary)
+- Up to 5 Local Secondary Indexes per table
+- Must be defined at table creation time
+- `Attribute Projections` – can contain some or all the attributes of the base table (`KEYS_ONLY, INCLUDE, ALL`)
+
+## DynamoDB – Global Secondary Index (GSI)
+- `Alternative Primary Key (HASH or HASH+RANGE)` from the base table
+- Speed up queries on non-key attributes
+- The Index Key consists of scalar attributes (`String, Number, or Binary`)
+- `Attribute Projections` – some or all the attributes of the base table (`KEYS_ONLY, INCLUDE, ALL`) - Must provision RCUs & WCUs for the index
+NOT FOR DISTRIBUTION © Stephane Maarek www.datacumulus.com
+- `Can be added/modified after table creation`
+
+## DynamoDB - PartiQL
+- Use a SQL-like syntax to manipulate DynamoDB tables
+- Supports some (but not all) statements: 
+    - INSERT
+    - UPDATE 
+    - SELECT 
+    - DELETE
+- It supports Batch operations
+
+## DynamoDB – Optimistic Locking
+- DynamoDB has a feature called “Conditional Writes”
+- A strategy to ensure an item hasn’t changed before you update/delete it
+- Each item has an attribute that acts as a version number
+
+## DAX
+- Fully-managed, highly available, seamless in-memory cache for DynamoDB
+- Microseconds latency for cached reads & queries
+- Doesn’t require application logic modification (compatible with existing DynamoDB APIs)
+- Solves the “Hot Key” problem (too many reads)
+- 5 minutes TTL for cache (default)
+- Up to 10 nodes in the cluster
+- Multi-AZ (3 nodes minimum recommended for production)
+- Secure (Encryption at rest with KMS,VPC, IAM, CloudTrail, ...)
+
+## DynamoDB Streams
+- Ordered stream of item-level modifications (create/update/delete) in a table
+- Stream records can be:
+- Sent to Kinesis Data Streams
+- Read by AWS Lambda
+- Read by Kinesis Client Library applications
+- Data Retention for up to 24 hours
+- Use cases:
+    - react to changes in real-time (welcome email to users)
+    - Analytics
+    - Insert into derivative tables
+    - Insert into ElasticSearch
+    - Implement cross-region replication
+## DynamoDB Streams
+- Ability to choose the information that will be written to the stream: 
+    - `KEYS_ONLY` – only the key attributes of the modified item
+    - `NEW_IMAGE` – the entire item, as it appears after it was modified
+    - `OLD_IMAGE` – the entire item, as it appeared before it was modified
+    - `NEW_AND_OLD_IMAGES` – both the new and the old images of the item
+- DynamoDB Streams are made of shards, just like Kinesis Data Streams 
+- You don’t provision shards, this is automated by AWS
+- Records are not retroactively populated in a stream after enabling it
+
+## DynamoDB Streams & AWS Lambda
+- You need to define an Event Source Mapping to read from a DynamoDB Streams
+- You need to ensure the Lambda function has the appropriate permissions
+- Your Lambda function is invoked synchronously
+
+## DynamoDB –TimeTo Live (TTL)
+- Automatically delete items after an expiry timestamp
+- Doesn’t consume any WCUs (i.e., no extra cost)
+- The TTL attribute must be a “Number” data type with “Unix Epoch timestamp” value
+- Expired items deleted within 48 hours of expiration
+- Expired items, that haven’t been deleted, appears in reads/queries/scans (if you don’t want them, filter them out)
+- Expired items are deleted from both LSIs and GSIs
+- A delete operation for each expired item enters the DynamoDB Streams (can help recover expired items)
+- Use cases: reduce stored data by keeping only current items, adhere to regulatory obligations, ...
+
+## DynamoDB CLI – Good to Know
+- `--projection-expression`: one or more attributes to retrieve 
+- `--filter-expression`: filter items before returned to you
+- General AWS CLI Pagination options (e.g., DynamoDB, S3, ...)
+    - `--page-size`: specify that AWS CLI retrieves the full list of items but with a larger number of API calls instead of one API call (default: 1000 items)
+    - `--max-items`: max. number of items to show in the CLI (returns NextToken)
+    - `--starting-token`: specify the last NextToken to retrieve the next set of items
+
+## DynamoDBTransactions
+- Coordinated, all-or-nothing operations (add/update/delete) to multiple items across one or more tables
+- Provides Atomicity, Consistency, Isolation, and Durability (ACID)
+- `Read Modes` – Eventual Consistency, Strong Consistency,Transactional
+- `Write Modes` – Standard,Transactional
+- `Consumes 2x WCUs & RCUs`
+    - DynamoDB performs 2 operations for every item (prepare & commit)
+- Two operations: (up to 25 unique items or up to 4 MB of data)
+    - `TransactGetItems` – one or more GetItem operations
+    - `TransactWriteItems` – one or more PutItem, UpdateItem, and DeleteItem operations
+- Use cases: financial transactions, managing orders, multiplayer games, ...
+
+## DynamoDB as Session State Cache 
+- It’s common to use DynamoDB to store session states
+- vs. ElastiCache
+    - ElastiCache is in-memory, but DynamoDB is serverless 
+    - Both are key/value stores
+- vs. EFS
+    - EFS must be attached to EC2 instances as a network drive
+- vs. EBS & Instance Store
+    - EBS & Instance Store can only be used for local caching, not shared caching
+- vs. S3
+    - S3 is higher latency, and not meant for small objects
+
+## DynamoDB Write Sharding
+- Imagine we have a voting application with two candidates, candidate A and candidate B
+- If `Partition Key` is “Candidate_ID”, this results into two partitions, which will generate issues (e.g., Hot Partition)
+- A strategy that allows better distribution of items evenly across partitions
+- Add a suffix to Partition Key value
+- Two methods:
+    - Sharding Using Random Suffix
+    - Sharding Using Calculated Suffix
+
+## DynamoDB Operations
+- Table Cleanup
+    - Option 1: Scan + DeleteItem
+      - Very slow,consumesRCU&WCU,expensive
+- Option 2: Drop Table + Recreate table 
+    - Fast,efficient,cheap
+- Copying a DynamoDB Table
+    - Option 1: Using AWS Data Pipeline
+    - Option 2: Backup and restore into a new table
+        - Takes some time
+    - Option 3: Scan + PutItem or BatchWriteItem
+        - Write your own code
+
+## DynamoDB – Security & Other Features
+- **Security**
+    - VPC Endpoints available to access DynamoDB without using the Internet
+    - Access fully controlled by IAM
+    - Encryption at rest using AWS KMS and in-transit using SSL/TLS
+- **Backup and Restore feature available **
+    - Point-in-time Recovery (PITR) like RDS 
+    - No performance impact
+- **GlobalTables**
+    - Multi-region,multi-active,fullyreplicated,highperformance
+- **DynamoDB Local**
+    - Develop and test apps locally without accessing the DynamoDB web service (without Internet)
+- AWS Database Migration Service (AWS DMS) can be used to migrate to DynamoDB (from MongoDB, Oracle, MySQL, S3, ...)
+
+## DynamoDB – Fine-Grained Access Control
+- Using `Web Identity Federation` or `Cognito Identity Pools`, each user gets AWS credentials
+- You can assign an IAM Role to these users with a `Condition` to limit their API access to DynamoDB
+- `LeadingKeys` – limit row-level access for users on the Primary Key
+- `Attributes` – limit specific attributes the user can see
+
+# API Gateway
+- AWS Lambda + API Gateway: No infrastructure to manage 
+- Support for the WebSocket Protocol
+- Handle API versioning (v1, v2...)
+- Handle different environments (dev, test, prod...)
+- Handle security (Authentication and Authorization) 
+- Create API keys, handle request throttling
+- Swagger / Open API import to quickly define APIs 
+- Transform and validate requests and responses
+- Generate SDK and API specifications 
+- Cache API responses
+
+## API Gateway – Integrations High Level
+- Lambda Function
+  - Invoke Lambda function
+  - Easy way to expose REST API backed by AWS Lambda
+- HTTP
+  - Expose HTTP endpoints in the backend
+  - Example: internal HTTP API on premise, Application Load Balancer... 
+  - Why? Add rate limiting, caching, user authentications, API keys, etc...
+- AWS Service
+  - Expose any AWS API through the API Gateway?
+  - Example: start an AWS Step Function workflow, post a message to SQS
+  - Why? Add authentication, deploy publicly, rate control...
+API Gateway - Endpoint Types
+- `Edge-Optimized (default)` For global clients
+  - Requests are routed through the CloudFront Edge locations (improves latency) 
+  - The API Gateway still lives in only one region
+- `Regional`
+  - For clients within the same region
+  - Could manually combine with CloudFront (more control over the caching strategies and the distribution)
+- `Private`
+  - Can only be accessed from your VPC using an interface VPC endpoint (ENI)
+  - Use a resource policy to define access
+## API Gateway – Deployment Stages
+- Making changes in the API Gateway does not mean they’re effective 
+- You need to make a “deployment” for them to be in effect
+- It’s a common source of confusion
+- Changes are deployed to “Stages” (as many as you want)
+- Use the naming you like for stages (dev, test, prod)
+- Each stage has its own configuration parameters
+- Stages can be rolled back as a history of deployments is kept
+
+## API Gateway – Stage Variables
+- Stage variables are like environment variables for API Gateway
+- Use them to change often changing configuration values
+- They can be used in:
+  - Lambda function ARN
+  - HTTP Endpoint
+  - Parameter mapping templates
+**Use cases:**
+  - Configure HTTP endpoints your stages talk to (dev, test, prod...)
+  - Pass configuration parameters to AWS Lambda through mapping templates
+  - Stage variables are passed to the ”context” object in AWS Lambda
+
+## API Gateway Stage Variables & Lambda Aliases 
+- We create a stage variable to indicate the corresponding Lambda alias
+- Our API gateway will automatically invoke the right Lambda function!
+
+## API Gateway – Canary Deployment
+- Possibility to enable canary deployments for any stage (usually prod)
+- Choose the % of traffic the canary channel receives
+- Metrics & Logs are separate (for better monitoring)
+- Possibility to override stage variables for canary
+- This is blue / green deployment with AWS Lambda & API Gateway
+
+## API Gateway - IntegrationTypes - 
+**Integration Type MOCK**
+- API Gateway returns a response without sending the request to the backend 
+**IntegrationType HTTP / AWS (Lambda & AWS Services)**
+- you must configure both the integration request and integration response 
+- Setup data mapping using mapping templates for the request & response
+**Integration Type AWS_PROXY (Lambda Proxy)**
+- incoming request from the client is the input to Lambda
+- The function is responsible for the logic of request / response
+- No mapping template, headers, query string parameters... are passed as arguments
+**Integration Type HTTP_PROXY **
+- No mapping template
+- The HTTP request is passed to the backend
+- The HTTP response from the backend is forwarded by API Gateway
+## Mapping Templates (AWS & HTTP Integration)
+- Mapping templates can be used to modify request / responses 
+- Rename / Modify query string parameters
+- Modify body content
+- Add headers
+- Uses Velocity Template Language (VTL): for loop, if etc... 
+- Filter output results (remove unnecessary data)
+**Example**
+SOAP API are XML based, whereas REST API are JSON based
+In this case, API Gateway should:
+- Extract data from the request: either path, payload or header
+- Build SOAP message based on request data (mapping template)
+- Call SOAP service and receive XML response
+- Transform XML response to desired format (like JSON), and respond to the user
+
+## AWS API Gateway Swagger / Open API spec 
+- Common way of defining REST APIs, using API definition as code
+- Import existing Swagger / OpenAPI 3.0 spec to API Gateway 
+  - Method
+  - Method Request
+  - Integration Request
+  - Method Response
+  - + AWS extensions for API gateway and setup every single option
+- Can export current API as Swagger / OpenAPI spec
+- Swagger can be written inYAML or JSON
+- Using Swagger we can generate SDK for our applications
+
+## Caching API responses
+- Caching reduces the number of calls made to the backend
+- Default TTL (time to live) is 300 seconds (min: 0s, max: 3600s)
+- Caches are defined per stage
+- Possible to override cache settings per method
+- Cache encryption option
+- Cache capacity between 0.5GB to 237GB
+- Cache is expensive, makes sense in production, may not make sense in dev / test
+
+## API Gateway Cache Invalidation
+- Able to flush the entire cache (invalidate it) immediately
+- Clients can invalidate the cache with header: `Cache- Control: max-age=0`(with proper IAM authorization)
+- If you don't impose
+an InvalidateCache policy (or choose the Require authorization check box in the console), any client can invalidate the API cache
+
+## API Gateway – Usage Plans & API Keys
+- If you want to make an API available as an offering ($) to your customers
+- **Usage Plan:**
+  - who can access one or more deployed API stages and methods
+  - how much and how fast they can access them
+  - uses API keys to identify API clients and meter access
+  - configure throttling limits and quota limits that are enforced on individual client
+- **API Keys:**
+  - alphanumeric string values to distribute to your customers
+  - Ex:WBjHxNtoAb4WPKBC7cGm64CBibIb24b4jt8jJHo9
+  - Can use with usage plans to control access
+  - Throttling limits are applied to the API keys
+  - Quotas limits is the overall number of maximum requests
+
+## API Gateway – Correct Order for API keys
+- To configure a usage plan
+  1. Create one or more APIs, configure the methods to require an API key, and deploy the APIs to stages.
+  2. Generate or import API keys to distribute to application developers (your customers) who will be using your API.
+  3. Create the usage plan with the desired throttle and quota limits.
+  4. Associate API stages and API keys with the usage plan.
+- Callers of the API must supply an assigned API key in the x-api-key header in requests to the API.
+
+## API Gateway – Logging & Tracing
+- CloudWatch Logs:
+    - Enable CloudWatch logging at the Stage level (with Log Level)
+    - Can override settings on a per API basis (ex: ERROR, DEBUG, INFO) 
+    - Log contains information about request / response body
+- X-Ray:
+    -  Enable tracing to get extra information about requests in API Gateway
+    - X-Ray API Gateway + AWS Lambda gives you the full picture
+
+## API Gateway – CloudWatch Metrics
+- Metrics are by stage, Possibility to enable detailed metrics
+- `CacheHitCount & CacheMissCount`: efficiency of the cache
+- `Count`:The total number API requests in a given period.
+- `IntegrationLatency`:The time between when API Gateway relays a request to the backend and when it receives a response from the backend.
+- `Latency`:The time between when API Gateway receives a request from a client and when it returns a response to the client.The latency includes the integration latency and other API Gateway overhead.
+- `4XXError (client-side) & 5XXError (server-side)`
+
+## API Gateway Throttling
+- Account Limit
+    - API Gateway throttles requests at10000 rps across all API 
+    - Soft limit that can be increased upon request
+- In case of throttling => 429 Too Many Requests (retriable error)
+- Can set Stage limit & Method limits to improve performance
+- Or you can define Usage Plans to throttle per customer
+> Just like Lambda Concurrency, one API that is overloaded, if not limited, can cause the other APIs to be throttled
+
+## API Gateway - Errors
+- 4xx means Client errors 
+    - 400: Bad Request
+    - 403:Access Denied,WAF filtered 
+    - 429: Quota exceeded,Throttle
+- 5xx means Server errors
+    - 502: Bad Gateway Exception, usually for an incompatible output returned from a Lambda proxy integration backend and occasionally for out-of-order invocations due to heavy loads.
+    - 503: Service Unavailable Exception
+    - 504: Integration Failure – ex Endpoint Request Timed-out Exception API Gateway requests time out after 29 second maximum
+
+## AWS API Gateway - CORS
+- CORS must be enabled when you receive API calls from another domain.
+- The OPTIONS pre-flight request must contain the following headers: 
+    - Access-Control-Allow-Methods
+    - Access-Control-Allow-Headers 
+    - Access-Control-Allow-Origin
+- CORS can be enabled through the console
+
+![API-CORS](https://user-images.githubusercontent.com/33105405/186798417-7087d05a-8bc1-4980-ab5b-84169acf519a.png)
+
+## API Gateway – Resource Policies
+- Resource policies (similar to Lambda Resource Policy)
+- Allow for Cross Account Access (combined with IAM Security)
+- Allow for a specific source IP address
+- Allow for a VPC Endpoint
+  
+## API Gateway – Security 
+### IAM Permissions
+- Create an IAM policy authorization and attach to User / Role
+- Authentication = IAM | Authorization = IAM Policy 
+- Good to provide access within AWS (EC2, Lambda, IAM users...)
+- Leverages “Sig v4” capability where IAM credential are in headers
+
+### Cognito User Pools
+- Cognito fully manages user lifecycle, token expires automatically
+- API gateway verifies identity automatically from AWS Cognito
+- No custom implementation required
+- Authentication = Cognito User Pools | Authorization = API Gateway Methods
+
+### Lambda Authorizer (formerly Custom Authorizers)
+- Token-based authorizer (bearer token) – ex JWT (JSON Token) or Oauth
+- A request parameter-based Lambda authorizer (headers, query string, stage var)
+- Lambda must return an IAM policy for the user, result policy is cached
+- Authentication = External | Authorization = Lambda function
+
+### Summary
+- IAM:
+    - Great for users / roles already within your AWS account, + resource policy for cross account 
+    - Handle authentication + authorization
+    - Leverages Signature v4
+- Custom Authorizer:
+    - Great for 3rd party tokens
+    - Very flexible in terms of what IAM policy is returned
+    - Handle Authentication verification + Authorization in the Lambda function 
+    - Pay per Lambda invocation, results are cached
+- Cognito User Pool:
+    - You manage your own user pool (can be backed by Facebook, Google login etc...) 
+    - No need to write any custom code
+    - Must implement authorization in the backend
+
+## API Gateway – HTTP API vs REST API
+- **HTTP APIs**
+  - low-latency, cost-effective AWS Lambda proxy, HTTP proxy APIs and private integration (no data mapping)
+  - support OIDC and OAuth 2.0 authorization, and built-in support for CORS
+  - No usage plans and API keys 
+- **REST APIs**
+  - All features (except Native OpenID Connect / OAuth 2.0)
+## API Gateway – WebSocket API – Overview
+**WebSockets**
+  - Two-way interactive communication between a user’s browser and a server
+  - Server can push information to the client 
+  - This enables stateful application use cases
+- WebSocket APIs are often used in real- time applications such as chat applications, collaboration platforms, multiplayer games, and financial trading platforms
+- Works with AWS Services (Lambda, DynamoDB) or HTTP endpoints
+
+## API Gateway – WebSocket API – Routing
+- Incoming JSON messages are routed to different backend
+- If no routes => sent to `$default`
+- You request a route selection expression to select the field on JSON to route from
+- Sample expression: `$request.body.action`
+- The result is evaluated against the route keys available in your API Gateway
+- The route is then connected to the backend you’ve setup through API Gateway
+
+![API-WebSocs](https://user-images.githubusercontent.com/33105405/186798661-5bf00ac2-3a09-47d2-95f5-964b67d9a35e.png)
+
+## API Gateway - Architecture
+- Create a single interface for all the microservices in your company
+- Use API endpoints with various resources
+- Apply a simple domain name and SSL certificates
+- Can apply forwarding and transformation rules at the API Gateway level
+
+
 # Amazon Cognito
 ## Overview
 To give our users an identity so that they can interact with our application.
@@ -340,3 +947,417 @@ Evaluated from top to bottom
   - Custom Domains
   - Monitoring
   - Redirect and Custom Headers - Password protection
+
+# AWS Simple Token Service
+## Overview
+- Allows to grant limited and temporary access to AWS resources (up to 1 hour). 
+- `AssumeRole`: Assume roles within your account or cross account
+- `AssumeRoleWithSAML`: return credentials for users logged with SAML
+- `AssumeRoleWithWebIdentity`
+  - return creds for users logged with an IdP (Facebook Login, Google Login, OIDC compatible...) 
+  - AWS recommends against using this, and using Cognito Identity Pools instead
+- `GetSessionToken`: for MFA, from a user or AWS account root user
+- `GetFederationToken`: obtain temporary creds for a federated user
+- `GetCallerIdentity`: return details about the IAM user or role used in the API call
+- `DecodeAuthorizationMessage`: decode error message when an AWS API is denied
+### STS to Assume a Role
+- Define an IAM Role within your account or cross-account
+- Define which principals can access this IAM Role
+- Use AWS STS to retrieve credentials and impersonate the IAM Role you have access to (`AssumeRole API`)
+- Temporary credentials can be valid between 15 minutes to 1 hour
+### STS with MFA
+- Use GetSessionToken from STS
+- Appropriate IAM policy using IAM Conditions
+- aws:MultiFactorAuthPresent:true
+- Reminder, GetSessionToken returns:
+  - Access ID
+  - Secret Key
+  - SessionToken 
+  - Expiration date
+
+### IAM Best Practices – General
+- Never use Root Credentials, enable MFA for Root Account
+- Grant Least Privilege
+  - Each Group / User / Role should only have the minimum level of permission it needs
+  - Never grant a policy with “*” access to a service
+  - Monitor API calls made by a user in CloudTrail (especially Denied ones)
+- Never ever ever store IAM key credentials on any machine but a personal computer or on-premise server
+- On premise server best practice is to call STS to obtain temporary security credentials
+
+### IAM Best Practices – IAM Roles
+- EC2 machines should have their own roles
+- Lambda functions should have their own roles
+- ECS Tasks should have their own roles (`ECS_ENABLE_TASK_IAM_ROLE=true`)
+- CodeBuild should have its own service role
+- Create a least-privileged role for any service that requires it
+- Create a role per application / lambda function (do not reuse roles)
+
+### IAM Best Practices – Cross Account Access
+- Define an IAM Role for another account to access
+- Define which accounts can access this IAM Rile
+- Use AWS STS to retrieve credentials and impersonate the IAM Rolw you have access to (Assume Role API)
+- Tempeory credentials valid between `15 mins to 1 hr`
+
+### Authorization Model
+Evaluation of Policies, simplified
+1. If there’s an explicit DENY, end decision and DENY
+2. If there’s an ALLOW, end decision with ALLOW
+3. Else DENY
+
+### IAM Policies & S3 Bucket Policies
+- IAM Policies are attached to users, roles, groups
+- S3 Bucket Policies are attached to buckets
+- When evaluating if an IAM Principal can perform an operation X on a bucket, the `union` of its assigned IAM Policies and S3 Bucket Policies will be evaluated.
+
+| Scenario | Outcome |
+|--- |--- |
+| - IAM Role attached to EC2 instance, authorizes RW to “my_bucket” <br> - No S3 Bucket Policy attached | EC2 instance `can` read and write to `my_bucket` |
+| - IAM Role attached to EC2 instance, authorizes RW to “my_bucket” <br> - S3 Bucket Policy attached, explicit deny to the IAM Role | EC2 instance `cannot` read and write to `my_bucket` |
+| - IAM Role attached to EC2 instance, no S3 bucket permissions <br> - S3 Bucket Policy attached, explicit RW allow to the IAM Role | EC2 instance `can` read and write to `my_bucket` |
+| - IAM Role attached to EC2 instance, explicit deny S3 bucket permissions <br> - S3 Bucket Policy attached, explicit RW allow to the IAM Role | EC2 instance `cannot` read and write to `my_bucket` |
+
+Dynamic Policies with IAM
+- How do you assign each user a /home/<user> folder in an S3 bucket?
+**Option 1**
+  - Create an IAM policy allowing georges to have access to /home/georges - Create an IAM policy allowing sarah to have access to /home/sarah
+  - Create an IAM policy allowing matt to have access to /home/matt
+  - ... One policy per user!
+  - This doesn’t scale
+**Option 2**
+- Create one dynamic policy with IAM
+- Leverage the special policy variable ${aws:username}
+
+Dynamic Policy Sample
+
+```json
+{
+    "Effect": "Allow", 
+    "Action": ["s3:*"], 
+    "Resource": ["arn:aws:s3:::{{bucket}}/{{aws:username}}/*"] 
+}
+```
+### Inline vs Managed Policies
+- AWS Managed Policy 
+  - Maintained by AWS
+  - Good for power users and administrators
+  - Updated in case of new services / new APIs
+- Customer Managed Policy
+  - Best Practice, re-usable, can be applied to many principals 
+  - Version Controlled + rollback, central change management
+- Inline
+  - Strict one-to-one relationship between policy and principal
+  - Policy is deleted if you delete the IAM principal
+### Granting a User Permissions to Pass a Role to an AWS Service
+- To configure many AWS services, you must `pass` an IAM role to the service (this happens only once during setup)
+- The service will later assume the role and perform actions
+- Example of passing a role: - To an EC2 instance
+  - To a Lambda function
+  - To an ECS task
+  - To CodePipeline to allow it to invoke other services
+- For this, you need the IAM permission `iam:PassRole`
+- It often comes with iam:GetRole to view the role being passed
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": ["ec2:*"],
+            "Resource": "*",
+        }
+        
+        {
+            "Effect": "Allow",
+            "Action": "iam:PassRole",
+            "Resource": "arn:aws:iam::12345678912:role/S3Access",
+        }
+    ]
+}
+```
+#### Can a role be passed to any service?
+- No: Roles can only be passed to what their trust allows
+- A trust policy for the role that allows the service to assume the role
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::111122223333:root"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {}
+    }
+  ]
+}
+```
+### What is Microsoft Active Directory (AD)?
+- Found on any Windows Serverwith AD Domain Service
+- Database of objects: User Accounts, Computers, Printers, File Shares, Security Groups
+- Centralized security management, create account, assign permissions
+- Objects are organized in trees
+- A group of trees is a forest
+
+### AWS Directory Services
+
+| Service | Description |
+| --- | --- |
+| AWS Managed Microsoft AD | - Create your own AD in AWS, manage users locally, supports MFA <br>- Establish “trust” connections with your on- premise AD |
+| AD Connector | - Directory Gateway (proxy) to redirect to on- premise AD, supports MFA <br> - Users are managed on the on-premise AD | 
+| Simple AD | - AD-compatible managed directoru on AWS <br> - Cannot be joined with on-premise AD|
+# AWS Security and Encryption
+### Encruption in Flight (SSL)
+- Data is encrypted before sending and decrypted after receiving
+- SSL certificates help with encryption (HTTPS)
+- Encryption in flight ensures no MITM (man in the middle attack) can happen
+### Server side encryption at rest
+- Data is encrypted after being received by the server
+- Data is decrypted before being sent
+- It is stored in an encrypted form thanks to a key (usually a data key)
+- The encryption / decryption keys must be managed somewhere and the server must have access to it
+### Client side encryption
+- Data is encrypted by the client and never decrypted by the server 
+- Data will be decrypted by a receiving client
+- The server should not be able to decrypt the data
+- Could leverage Envelope Encryption
+## AWS KMS (Key Management Service)
+- Anytime you hear “encryption” for an AWS service, it’s most likely KMS 
+- Easy way to control access to your data, AWS manages keys for us
+- Fully integrated with IAM for authorization
+- Seamlessly integrated into:
+  - Amazon EBS: encrypt volumes
+  - Amazon S3: Server side encryption of objects - Amazon Redshift: encryption of data
+  - Amazon RDS: encryption of data
+  - Amazon SSM: Parameter store
+  - Etc...
+- But you can also use the CLI / SDK
+## KMS – Customer Master Key (CMK)Types
+***Symmetric (AES-256 keys)***
+  - First offering of KMS, single encryption key that is used to Encrypt and Decrypt
+  - AWS services that are integrated with KMS use Symmetric CMKs
+  - Necessary for envelope encryption
+  - You never get access to the Key unencrypted (must call KMS API to use)
+***Asymmetric (RSA & ECC key pairs)***
+  - Public (Encrypt) and Private Key (Decrypt) pair
+  - Used for Encrypt/Decrypt, or Sign/Verify operations
+  - The public key is downloadable, but you can’t access the Private Key unencrypted
+  - Use case: encryption outside of AWS by users who can’t call the KMS API
+### KMS (Key Management Service)
+- Able to fully manage the keys & policies: 
+  - Create
+  - Rotation policies
+  - Disable
+  - Enable
+- Able to audit key usage (using CloudTrail)
+- Three types of Customer Master Keys (CMK):
+  - AWS Managed Service Default CMK: free
+  - User Keys created in KMS: $1 / month
+  - User Keys imported (must be 256-bit symmetric key): $1 / month
+- pay for API call to KMS ($0.03 / 10000 calls)
+- Anytime you need to share sensitive information... use KMS 
+  - Database passwords
+  - Credentials to external service 
+  - Private Key of SSL certificates
+- The value in KMS is that the CMK used to encrypt data can never be retrieved by the user, and the CMK can be rotated for extra security
+- Never ever store your secrets in plaintext, especially in your code!
+- Encrypted secrets can be stored in the code / environment variables - KMS can only help in encrypting up to 4KB of data per call
+- `If data > 4 KB, use envelope encryption`
+- To give access to KMS to someone:
+  - Make sure the Key Policy allows the user
+  - Make sure the IAM Policy allows the API calls
+
+### KMS Key Policies
+- Control access to KMS keys, “similar” to S3 bucket policies
+- Difference: you cannot control access without them
+- Default KMS Key Policy:
+  - Created if you don’t provide a specific KMS Key Policy
+  - Complete access to the key to the root user = entire AWS account 
+  - Gives access to the IAM policies to the KMS key
+- Custom KMS Key Policy:
+  - Define users, roles that can access the KMS key
+  - Define who can administer the key
+  - Useful for cross-account access of your KMS key
+
+### Copying Snapshots across accounts
+1. Create a Snapshot, encr ypted with your own CMK
+2. Attach a KMS Key Policy to authorize cross-account access
+3. Share the encr ypted snapshot
+4. (in target) Create a copy of the Snapshot, encrypt it with a KMS Key in your account
+5. Create a volume from the snapshot
+
+### Envelope Encryption
+- KMS Encrypt API call has a limit of 4 KB
+- If you want to encrypt >4 KB, we need to use Envelope Encryption
+- The main API that will help us is the GenerateDataKey API
+  > **For the exam**: anything over 4 KB of data that needs to be encrypted must use the Envelope Encryption == `GenerateDataKey API`
+
+### Encryption SDK
+- The AWS Encryption SDK implemented Envelope Encryption for us 
+- The Encryption SDK also exists as a CLI tool we can install
+- Implementations for Java, Python, C, JavaScript
+- Feature - Data Key Caching:
+  - re-use data keys instead of creating new ones for each encryption
+  - Helps with reducing the number of calls to KMS with a security trade-off
+  - Use LocalCryptoMaterialsCache (max age, max bytes, max number of messages)
+
+### KMS Symmetric – API Summary
+- `Encrypt`: encrypt up to 4 KB of data through KMS
+- `GenerateDataKey`: generates a unique symmetric data key (DEK) 
+  - returns a plaintext copy of the data key
+  - AND a copy that is encrypted under the CMK that you specify
+- `GenerateDataKeyWithoutPlaintext`:
+  - Generate a DEK to use at some point (not immediately)
+  - DEK that is encrypted under the CMK that you specify (must use Decrypt later)
+- `Decrypt`: decrypt up to 4 KB of data (including Data Encryption Keys) 
+- `GenerateRandom`: Returns a random byte string
+
+### KMS Request Quotas
+- When you exceed a request quota, you get a ThrottlingException:
+- To respond, use exponential backoff (backoff and retry)
+- For cryptographic operations, they share a quota
+- This includes requests made by AWS on your behalf (ex: SSE-KMS)
+- For GenerateDataKey, consider using DEK caching from the Encryption SDK 
+- You can request a Request Quotas increase through API or AWS support
+
+| API Operations | Request quotas (per second) |
+|--- |--- |
+| Decrypt <br> Encrypt <br>GenerateDataKey (symmetric) <br> GenerateDataKeyWithoutPlaintext (symmetric) <br> GenerateRandom <br> ReEncrypt<br> Sign (asymmetric)<br> Verify (asymmetric) | These shared quotas vary with the AWS Region and the type of CMK used in the request. Each quota is calculated separately. <br> Symmetric CMK quota: <br> - 5,500 (shared) <br> - 10,000 (shared) in the following regions: us-east2, ap-southeast-1, ap-southeast-2, ap-norteast-1, eu-central-1, eu-west-2 <br> - 30,000 (shared) in us-east-1, us-west-2,eu-west-1 <br> Asymmetric CMK quota: <br> - 500 (shared) for RSA CMKs <br> - 300 (shared) for Elliptic curve (ECC) CMK |
+
+## S3 Encryption for Objects
+- There are 4 methods of encrypting objects in S3
+  - SSE-S3: encrypts S3 objects using keys handled & managed by AWS
+  - SSE-KMS: leverage AWS Key Management Service to manage encryption keys 
+  - SSE-C: when you want to manage your own encryption keys
+  - Client Side Encryption
+> It’s important to understand which ones are adapted to which situation for the exam
+
+### SSE-KMS
+- encryption using keys handled & managed by KMS
+- KMS Advantages: user control + audit trail
+- Object is encrypted server side
+- Must set header: `"x-amz-server-side-encryption": ”aws:kms"`
+- SSE-KMS leverages the GenerateDataKey & Decrypt KMS API calls 
+- These KMS API calls will show up in CloudTrail, helpful for logging
+- To perform SSE-KMS, you need:
+  - A KMS Key Policy that authorizes the user / role
+  - An IAM policy that authorizes access to KMS
+  - Otherwise you will get an access denied error
+- S3 calls to KMS for SSE-KMS count against your KMS limits 
+  - If throttling, try exponential backoff
+  - If throttling, you can request an increase in KMS limits
+  - The service throttling is KMS, not Amazon S3
+
+### S3 Bucket Policies – Force SSL
+- To force SSL, create an S3 bucket policy with a DENY on the condition `aws:SecureTransport = false`
+  > **Note**: Using an allow on `aws:SecureTransport = true` would allow anonymous GetObject if using SSL
+- Read more here: https://aws.amazon.com/premiumsupport/knowledge-center/s3-bucket-policy-for-config-rule/
+
+```json
+{
+  "Id": "ExamplePolicy",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowSSLRequestsOnly",
+      "Action": "s3:*",
+      "Effect": "Deny",
+      "Resource": [
+        "arn:aws:s3:::DOC-EXAMPLE-BUCKET",
+        "arn:aws:s3:::DOC-EXAMPLE-BUCKET/*"
+      ],
+      "Condition": {
+        "Bool": {
+          "aws:SecureTransport": "false"
+        }
+      },
+      "Principal": "*"
+    }
+  ]
+}
+```
+
+### S3 Bucket Policy – Force Encryption of SSE-KMS
+1. Deny incorrect encryption header: make sure it includes aws:kms (== SSE-KMS)
+2. Deny no encryption header to ensure objects are not uploaded un-encrypted
+> Note: could swap 2) for S3 default encryption of SSE-KMS
+
+### S3 Bucket Key for SSE-KMS encryption
+- New setting to decrease...
+  - Number of API calls made to KMS from S3 by 99%
+  - Costs of overall KMS encryption with Amazon S3 by 99%
+- This leverages data keys
+  - A “S3 bucket key” is generated
+  - That key is used to encrypt KMS objects with new data keys
+- You will see less KMS CloudTrail events in CloudTrail
+
+## SSM Parameter Store
+- Secure storage for configuration and secrets 
+- Optional Seamless Encryption using KMS
+- Serverless, scalable, durable, easy SDK
+- Version tracking of configurations / secrets
+- Configuration management using path & IAM 
+- Notifications with CloudWatch Events
+- Integration with CloudFormation
+- SSM Parameter Store Hirearchy
+
+```ruby
+/my-dept/
+    my-app/
+        dev/
+            db-url
+            db-password
+        prod/
+            db-url
+            db-password
+    next-app/
+/other-dept/
+/aws/reference/secretsmanager/secret_ID_inSecrets_Manager
+/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+
+```
+### Standard and Advanced parameter tiers
+
+|  	| Standard 	| Advanced 	|
+|---	|---	|---	|
+| Total number of parameters allowed (per AWS account and region) 	| 10,000 	| 100,000 	|
+| (per AWS account and 	| 4 KB 	| 8 KB 	|
+| Region) 	| No 	| Yes 	|
+| Cost 	| No additional charge 	| charges apply 	|
+| Storage Pricing 	| Free 	| $0.05 per advanced parameter per month 	|
+| API Interaction Pricing <br> Higher throughput = up to 1000 transactions / sec) 	| Standard Throughput: free <br> Higher Throughput: $0.05 per 10,000 API interactions 	| Standard Throughput: $0.05 per 10,000 API interactions<br><br>Higher Throughput: $0.05 per 10,000 API interactions 	|
+
+### Parameters Policies (for advanced parameters)
+- Allow to assign a TTL to a parameter (expiration date) to force updating or deleting sensitive data such as passwords
+- Can assign multiple policies at a time
+
+### AWS Secrets Manager
+- Newer service, meant for storing secrets
+- Capability to force rotation of secrets every X days
+- Automate generation of secrets on rotation (uses Lambda)
+- Integration with Amazon RDS (MySQL, PostgreSQL, Aurora) - Secrets are encrypted using KMS
+- Mostly meant for RDS integration
+
+### SSM Parameter Store vs Secrets Manager
+
+| Secerets Manager | SSM Parameter Store |
+|--- |--- |
+| $$$ | $ |
+| - Automatic rotation of secrets with AWS Lambda <br> - Lambda function is provided for RDS, Redshift, DocumentDB <br> - KMS encryption is mandatory <br> - Can integration with CloudFormation | - Simple API <br>- No secret rotation (can enable rotation using Lambda triggered by CW Events) <br>- KMS encryption is optional <br>- Can integration with CloudFormation <br>- Can pull a Secrets Manager secret using the SSM Parameter Store API |
+
+## CloudWatch Logs - Encryption
+- You can encrypt CloudWatch logs with KMS keys
+- Encryption is enabled at the log group level, by associating a CMK with a log group, either when you create the log group or after it exists.
+- You cannot associate a CMK with a log group using the CloudWatch console.
+- You must use the CloudWatch Logs API:
+- `associate-kms-key` : if the log group already exists
+- `create-log-group` : if the log group doesn’t exist yet
+
+## CodeBuild Security
+- To access resources in your VPC, make sure you specify a VPC configuration for your CodeBuild
+- Secrets in CodeBuild:
+- Don’t store them as plaintext in environment variables
+- Instead...
+  - Environment variables can reference parameter store parameters 
+  - Environment variables can reference secrets manager secrets
