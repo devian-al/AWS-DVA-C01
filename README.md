@@ -24,6 +24,7 @@
 - Synchronous: CLI, SDK, API Gateway, Application Load Balancer
   - Results is returned right away
   - Error handling must happen client side (retries, exponential backoff, etc...)
+https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Programming.Errors.html#Programming.Errors.RetryAndBackoff
 
 ## Lambda - Synchronous Invocations - Services
 - User Invoked:
@@ -1586,11 +1587,14 @@ Dynamic Policy Sample
 5. Create a volume from the snapshot
 
 ### Envelope Encryption
+  Envelope encryption is the practice of encrypting plaintext data with a data key, and then encrypting the data key under another key.
 - KMS Encrypt API call has a limit of 4 KB
 - If you want to encrypt >4 KB, we need to use Envelope Encryption
 - The main API that will help us is the GenerateDataKey API
   > **For the exam**: anything over 4 KB of data that needs to be encrypted must use the Envelope Encryption == `GenerateDataKey API`
 
+  ![KMS-Envelope-Enc](https://user-images.githubusercontent.com/33105405/186966951-62db678e-106a-4f21-8a1d-2853234217ec.png)
+  
 ### Encryption SDK
 - The AWS Encryption SDK implemented Envelope Encryption for us 
 - The Encryption SDK also exists as a CLI tool we can install
